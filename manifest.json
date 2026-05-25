@@ -1,0 +1,11 @@
+{
+	"id": "noteit-plugin",
+	"name": "NoteIT",
+	"version": "1.0.0",
+	"minAppVersion": "0.15.0",
+	"description": "Creates note based on user description",
+	"author": "Eleven-Ahmad",
+	"authorUrl": "https://obsidian.md",
+	"fundingUrl": "https://obsidian.md/pricing",
+	"isDesktopOnly": false
+}
