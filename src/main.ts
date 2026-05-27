@@ -1,4 +1,11 @@
-import { ItemView, Notice, Plugin, TFile, WorkspaceLeaf } from "obsidian";
+import {
+	ItemView,
+	Notice,
+	Plugin,
+	TFile,
+	WorkspaceLeaf,
+	requestUrl,
+} from "obsidian";
 
 const VIEW_TYPE_CHAT = "chat-writer-view";
 
@@ -93,21 +100,86 @@ class ChatComposerView extends ItemView {
 		this.sending = true;
 		this.inputEl.value = "";
 		this.renderMessage("user", text);
+		this.renderMessage(
+			"system",
+			"Gathering vault info and generating markdown...",
+		);
 
 		try {
-			const fileName = this.buildFileName(text);
-			const fileContent = this.buildFileContent(text);
+			// 1. Gather files from "1-tags" folder + Obsidian's native cached tags
+			const folderTags: string[] = [];
+			const allFiles = this.app.vault.getFiles();
+
+			allFiles.forEach((file) => {
+				if (file.path.startsWith("1-tags/")) {
+					folderTags.push(file.basename);
+				}
+			});
+
+			// Get native system tags (keys look like: {"#work": 3, "#idea": 1})
+			const nativeTagsObj = this.app.metadataCache.getTags();
+			const nativeTags = Object.keys(nativeTagsObj).map((tag) =>
+				tag.replace("#", ""),
+			);
+
+			// Combine both tag arrays into a single list unique values
+			const totalTags = Array.from(
+				new Set([...folderTags, ...nativeTags]),
+			);
+
+			// 2. Gather names of other files inside "2-notes" folder
+			const notesInVault: string[] = [];
+			allFiles.forEach((file) => {
+				if (
+					file.path.startsWith("2-notes/") &&
+					file.extension === "md"
+				) {
+					notesInVault.push(file.basename);
+				}
+			});
+
+			// 3. Construct the server payload matching your new layout requirements
+			const requestPayload = {
+				userMessage: text,
+				tags: totalTags,
+				"other files in vault": notesInVault,
+			};
+
+			// 4. Fire POST request to your FastAPI server
+			const response = await requestUrl({
+				url: "http://127.0.0.1:8000/create-note",
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify(requestPayload),
+			});
+
+			if (response.status !== 200) {
+				throw new Error(
+					`Server returned status code ${response.status}`,
+				);
+			}
+
+			const serverData = response.json as { markdown: string };
+			const aiMarkdownContent = serverData.markdown;
+
+			// 5. Build file destination path safely within the "2-notes/" directory
+			const baseFileName = this.buildFileName(text);
+			const targetPath = `2-notes/${baseFileName}`;
+			const fileContent = this.buildFileContent(aiMarkdownContent);
+
 			const savedFile = await this.createUniqueFile(
-				fileName,
+				targetPath,
 				fileContent,
 			);
 
 			this.renderMessage("system", `Saved to ${savedFile.path}.`);
-			new Notice(`Created ${savedFile.basename}`);
+			new Notice(`Created ${savedFile.basename} in 2-notes/`);
 		} catch (error: unknown) {
 			const message =
 				error instanceof Error ? error.message : "Unknown error";
-			this.renderMessage("system", `Could not save the note: ${message}`);
+			this.renderMessage("system", `Error: ${message}`);
 			new Notice("Failed to create note.");
 		} finally {
 			this.sending = false;
@@ -141,18 +213,19 @@ class ChatComposerView extends ItemView {
 	}
 
 	private async createUniqueFile(
-		baseName: string,
+		targetPath: string,
 		content: string,
 	): Promise<TFile> {
 		const { vault } = this.app;
-		const existingFile = vault.getAbstractFileByPath(baseName);
+		const existingFile = vault.getAbstractFileByPath(targetPath);
 		if (!existingFile) {
-			return vault.create(baseName, content);
+			return vault.create(targetPath, content);
 		}
 
-		const dotIndex = baseName.lastIndexOf(".");
-		const namePart = dotIndex >= 0 ? baseName.slice(0, dotIndex) : baseName;
-		const extension = dotIndex >= 0 ? baseName.slice(dotIndex) : "";
+		const dotIndex = targetPath.lastIndexOf(".");
+		const namePart =
+			dotIndex >= 0 ? targetPath.slice(0, dotIndex) : targetPath;
+		const extension = dotIndex >= 0 ? targetPath.slice(dotIndex) : "";
 
 		for (let index = 2; index < 1000; index += 1) {
 			const candidatePath = `${namePart} ${index}${extension}`;
