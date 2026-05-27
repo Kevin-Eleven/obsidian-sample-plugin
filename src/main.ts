@@ -116,13 +116,11 @@ class ChatComposerView extends ItemView {
 				}
 			});
 
-			// Get native system tags (keys look like: {"#work": 3, "#idea": 1})
 			const nativeTagsObj = this.app.metadataCache.getTags();
 			const nativeTags = Object.keys(nativeTagsObj).map((tag) =>
 				tag.replace("#", ""),
 			);
 
-			// Combine both tag arrays into a single list unique values
 			const totalTags = Array.from(
 				new Set([...folderTags, ...nativeTags]),
 			);
@@ -138,7 +136,7 @@ class ChatComposerView extends ItemView {
 				}
 			});
 
-			// 3. Construct the server payload matching your new layout requirements
+			// 3. Construct the server payload matching your new backend structure
 			const requestPayload = {
 				userMessage: text,
 				tags: totalTags,
@@ -156,18 +154,27 @@ class ChatComposerView extends ItemView {
 			});
 
 			if (response.status !== 200) {
-				throw new Error(
-					`Server returned status code ${response.status}`,
-				);
+				console.error(response.text);
+
+				throw new Error(`Server Error (${response.status})`);
 			}
-
-			const serverData = response.json as { markdown: string };
-			const aiMarkdownContent = serverData.markdown;
-
-			// 5. Build file destination path safely within the "2-notes/" directory
-			const baseFileName = this.buildFileName(text);
+			// 5. Destructure the parsed data payload from your backend
+			const serverData = response.json as {
+				title: string;
+				tags: string[];
+				related_notes: string[];
+				markdown: string;
+			};
+			// 6. Build file destination path safely using the AI-generated Title
+			const baseFileName = this.buildFileName(serverData.title);
 			const targetPath = `2-notes/${baseFileName}`;
-			const fileContent = this.buildFileContent(aiMarkdownContent);
+
+			// Inject both markdown content text and the parsed structural tags array
+			const fileContent = this.buildFileContent(
+				serverData.markdown,
+				serverData.tags,
+				serverData.related_notes,
+			);
 
 			const savedFile = await this.createUniqueFile(
 				targetPath,
@@ -186,32 +193,50 @@ class ChatComposerView extends ItemView {
 		}
 	}
 
-	private buildFileName(text: string): string {
+	// Sanitizes and formats the AI-suggested title into a safe file slug
+	private buildFileName(title: string): string {
 		const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-		const snippet = text
-			.slice(0, 24)
-			.toLowerCase()
-			.replace(/[^a-z0-9\s-]/g, "")
-			.trim()
-			.replace(/\s+/g, "-")
-			.slice(0, 24);
-		return `${timestamp}-${snippet || "chat-note"}.md`;
+		const sanitizedTitle = title;
+		// .toLowerCase()
+		// .replace(/[^a-z0-9\s-]/g, "")
+		// .trim()
+		// .replace(/\s+/g, "-")
+		// .slice(0, 30);
+
+		return `${sanitizedTitle}.md`;
 	}
 
-	private buildFileContent(text: string): string {
+	// Generates complete frontmatter dynamically containing the extracted AI tags
+	private buildFileContent(
+		content: string,
+		tags: string[],
+		relatedNotes: string[],
+	): string {
 		const createdAt = new Date().toISOString();
+
+		const finalTags = Array.from(new Set(["chat-input", ...tags]));
+
+		const yamlTags = finalTags.map((t) => `  - ${t}`).join("\n");
+
+		const relatedLinks =
+			relatedNotes.length > 0
+				? relatedNotes.map((n) => `- [[${n}]]`).join("\n")
+				: "None";
+
 		return [
 			"---",
 			`created: ${createdAt}`,
 			"tags:",
-			"  - chat-input",
+			yamlTags,
 			"---",
 			"",
-			text,
+			"## Related Notes",
+			relatedLinks,
+			"",
+			content,
 			"",
 		].join("\n");
 	}
-
 	private async createUniqueFile(
 		targetPath: string,
 		content: string,
@@ -239,7 +264,7 @@ class ChatComposerView extends ItemView {
 }
 
 export default class ChatWriterPlugin extends Plugin {
-	onload(): void {
+	async onload(): Promise<void> {
 		this.registerView(VIEW_TYPE_CHAT, (leaf) => new ChatComposerView(leaf));
 
 		this.addRibbonIcon("message-square", "Open chat writer", () => {
