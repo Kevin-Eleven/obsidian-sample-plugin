@@ -16,7 +16,7 @@ The tags field must be an empty array.
 	const relatedRule = options.includeRelatedNotes
 		? `
 The related_notes field should contain relevant existing notes.
-Prefer note titles from the provided RELATED NOTES list.
+Prefer note titles from the provided OTHER NOTES list.
 `
 		: `
 The related_notes field must be an empty array.

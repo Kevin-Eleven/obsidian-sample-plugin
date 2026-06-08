@@ -58,15 +58,14 @@ export function buildFileContent(
 		"tags:",
 		yamlTags,
 		"---",
-		"",
 		...(relatedNotes.length > 0
 			? [
 					"Related Notes",
 					relatedNotes.map((note) => `- [[${note}]]`).join(" "),
 					"---",
+					"",
 				]
 			: []),
 		content,
-		"",
 	].join("\n");
 }
