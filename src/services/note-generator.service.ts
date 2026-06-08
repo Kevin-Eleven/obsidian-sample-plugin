@@ -30,7 +30,7 @@ ${request.tags.join(", ")}
 		if (request.includeRelatedNotes) {
 			userContext += `
 
-RELATED NOTES:
+OTHER NOTES:
 ${request.otherFiles.join(", ")}
 `;
 		}
