@@ -41,7 +41,7 @@ export function buildFileContent(
 ): string {
 	const createdAt = new Date().toISOString();
 
-	const finalTags = Array.from(new Set(["chat-input", ...tags]));
+	const finalTags = Array.from(new Set([...tags]));
 
 	const yamlTags = finalTags.map((tag) => `  - ${tag}`).join("\n");
 
@@ -50,6 +50,8 @@ export function buildFileContent(
 			? relatedNotes.map((note) => `- [[${note}]]`).join("\n")
 			: "None";
 
+	// if relateed none dont add the section at all
+
 	return [
 		"---",
 		`created: ${createdAt}`,
@@ -57,9 +59,13 @@ export function buildFileContent(
 		yamlTags,
 		"---",
 		"",
-		"## Related Notes",
-		relatedLinks,
-		"",
+		...(relatedNotes.length > 0
+			? [
+					"Related Notes",
+					relatedNotes.map((note) => `- [[${note}]]`).join(" "),
+					"---",
+				]
+			: []),
 		content,
 		"",
 	].join("\n");
